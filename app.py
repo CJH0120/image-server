@@ -6,6 +6,9 @@ from io import BytesIO
 from flask_caching import Cache
 from dotenv import load_dotenv
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
+import uuid
+import time
 
 # .env 파일 로드
 load_dotenv()
@@ -64,8 +67,48 @@ def resize_image(folder_path, filename):
         logging.error(f"Server Error: {e}")
         abort(500, "Internal server error.")
 
+@app.route('/upload', methods=['POST'])
+def upload_image():
+    print(request.remote_addr)
+    if request.remote_addr != '127.0.0.1':
+        abort(401, "Unauthorized access. Only local requests are allowed.")
+    if 'image' not in request.files or 'folder' not in request.form:
+        abort(400, "No image or folder specified.")
+
+    image = request.files['image']
+    folder = request.form['folder']
+
+    # 폴더 경로 생성
+    folder_path = os.path.join(default_image_path, folder)
+    os.makedirs(folder_path, exist_ok=True) 
+
+    try:
+        file_extension = os.path.splitext(image.filename)[1].lower() 
+        if file_extension not in ['.png', '.jpg', '.jpeg', '.webp']:
+            abort(400, "Unsupported file type. Please upload png, jpg, jpeg, webp, or avif files.")
+
+        # 이미지 열기
+        img = Image.open(image)
+
+     
+        timestamp = int(time.time() * 1000000)
+
+        webp_filename = f"{timestamp}.webp"  
+        image_path = os.path.join(folder_path, webp_filename)
+
+        # WebP 형식으로 저장
+        img.save(image_path, format='WEBP', quality=100)
+        return_path = f'/{folder}/{webp_filename}'
+        logging.info(f"Uploaded and converted image: {return_path}")
+        return {"message": "Image uploaded and converted successfully.", "path": return_path}, 201
+
+    except Exception as e:
+        logging.error(f"Error uploading image: {e}")
+        abort(500, "Internal server error.")
+
+
+
 # 포트 설정
 port = int(os.getenv('PORT', 5000))
-
 if __name__ == '__main__':
     app.run(debug=os.getenv('DEBUG_MODE', 'true').lower() == 'true', port=port)
