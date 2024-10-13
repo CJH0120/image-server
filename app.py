@@ -37,7 +37,7 @@ def resize_image(folder_path, filename):
 
     logger.info(f"Received request from Method:[GET] Path:[{findPath}], Client IP: {client_ip}")
 
-    image_path = os.path.join(findPath, folder_path, filename)
+    image_path = os.path.join(default_image_path, folder_path, filename)
     width = request.args.get('w', type=int)
     height = request.args.get('h', type=int)
     
