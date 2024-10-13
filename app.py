@@ -26,19 +26,24 @@ cache = Cache(app, config={'CACHE_TYPE': os.getenv('CACHE_TYPE', 'SimpleCache')}
 CORS(app)  # 기본값으로 모든 도메인 허용
 
 # 로깅 설정
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @app.route('/<path:folder_path>/<filename>', methods=['GET'])
 @cache.cached(timeout=cache_timeout, query_string=True)
 def resize_image(folder_path, filename):
     client_ip = request.remote_addr
-    logging.info( "Received request from Method:[GET]", client_ip)
+    findPath = os.path.join(folder_path, filename)
+
+    logger.info(f"Received request from Method:[GET] Path:[{findPath}], Client IP: {client_ip}")
+
+    image_path = os.path.join(findPath, folder_path, filename)
     width = request.args.get('w', type=int)
     height = request.args.get('h', type=int)
+    
     if not is_valid_path(folder_path) or not is_valid_path(filename):
+        logger.error(f"ERROR - Invalid path. Path: {findPath}, Client IP: {client_ip}")
         abort(400, f"Your IP is {client_ip}. I will launch a DDoS attack soon Thanks.")
-
-    image_path = os.path.join(default_image_path, folder_path, filename)
 
     try:
         with Image.open(image_path) as img:
@@ -65,16 +70,18 @@ def resize_image(folder_path, filename):
             return send_file(output, mimetype=mime_type)
 
     except FileNotFoundError:
-        logging.error(f"ERROR - File not found.  Path : {image_path} client IP: {client_ip}")
-        abort(404, f"Not found: {image_path}")
+        logger.error(f"ERROR - File not found. Path: {findPath}, Client IP: {client_ip}")
+        abort(404, f"Not found: {findPath}")
     except Exception as e:
-        logging.error(f"Server Error: {e} Path : {image_path} client IP: {client_ip} ")
-        abort(500, f"Internal server error. ${e}") 
+        logger.error(f"Server Error: {e}, Path: {findPath}, Client IP: {client_ip}")
+        abort(500, f"Internal server error. {e}")
 
 @app.route('/upload', methods=['POST'])
 def upload_image():
-    logging.info( "Received request from Method:[POST]", request.remote_addr)
-    if request.remote_addr != '127.0.0.1':
+    client_ip = request.remote_addr
+    logger.info(f"Received request from Method:[POST], Client IP: {client_ip}")
+    
+    if client_ip != '127.0.0.1':
         abort(401, "Unauthorized access. Only local requests are allowed.")
     if 'image' not in request.files or 'folder' not in request.form:
         abort(400, "No image or folder specified.")
@@ -89,31 +96,24 @@ def upload_image():
     try:
         file_extension = os.path.splitext(image.filename)[1].lower() 
         if file_extension not in ['.png', '.jpg', '.jpeg', '.webp']:
-            abort(400, "Unsupported file type. Please upload png, jpg, jpeg, webp, or avif files.")
+            abort(400, "Unsupported file type. Please upload png, jpg, jpeg, or webp files.")
 
         # 이미지 열기
         img = Image.open(image)
-
      
         timestamp = int(time.time() * 1000000)
-
         webp_filename = f"{timestamp}.webp"  
         image_path = os.path.join(folder_path, webp_filename)
 
         # WebP 형식으로 저장
         img.save(image_path, format='WEBP', quality=100)
         return_path = f'/{folder}/{webp_filename}'
-        logging.info(f"Uploaded and converted image: {return_path}")
+        logger.info(f"Uploaded and converted image: {return_path}")
         return {"message": "Image uploaded and converted successfully.", "path": return_path}, 201
 
     except Exception as e:
-        logging.error(f"Error uploading image: {e}")
+        logger.error(f"Error uploading image: {e}")
         abort(500, "Internal server error.")
 
 def is_valid_path(path):
     return not re.search(r'(\.\.|/\.|\\\.|\.\./|\\\.)', path)
-
-# 포트 설정
-port = int(os.getenv('PORT', 5000))
-if __name__ == '__main__':
-    app.run(debug=os.getenv('DEBUG_MODE', 'true').lower() == 'true', port=port)
