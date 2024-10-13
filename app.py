@@ -7,8 +7,8 @@ from flask_caching import Cache
 from dotenv import load_dotenv
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-import uuid
 import time
+import re
 
 # .env 파일 로드
 load_dotenv()
@@ -31,8 +31,12 @@ logging.basicConfig(level=logging.INFO)
 @app.route('/<path:folder_path>/<filename>', methods=['GET'])
 @cache.cached(timeout=cache_timeout, query_string=True)
 def resize_image(folder_path, filename):
+    client_ip = request.remote_addr
+    logging.info( "Received request from Method:[GET]", client_ip)
     width = request.args.get('w', type=int)
     height = request.args.get('h', type=int)
+    if not is_valid_path(folder_path) or not is_valid_path(filename):
+        abort(400, f"Your IP is {client_ip}. I will launch a DDoS attack soon Thanks.")
 
     image_path = os.path.join(default_image_path, folder_path, filename)
 
@@ -61,15 +65,15 @@ def resize_image(folder_path, filename):
             return send_file(output, mimetype=mime_type)
 
     except FileNotFoundError:
-        logging.error(f"File not found: {image_path}")
-        abort(404, "Image not found.")
+        logging.error(f"ERROR - File not found.  Path : {image_path} client IP: {client_ip}")
+        abort(404, f"Not found: {image_path}")
     except Exception as e:
-        logging.error(f"Server Error: {e}")
-        abort(500, "Internal server error.")
+        logging.error(f"Server Error: {e} Path : {image_path} client IP: {client_ip} ")
+        abort(500, f"Internal server error. ${e}") 
 
 @app.route('/upload', methods=['POST'])
 def upload_image():
-    print(request.remote_addr)
+    logging.info( "Received request from Method:[POST]", request.remote_addr)
     if request.remote_addr != '127.0.0.1':
         abort(401, "Unauthorized access. Only local requests are allowed.")
     if 'image' not in request.files or 'folder' not in request.form:
@@ -106,7 +110,8 @@ def upload_image():
         logging.error(f"Error uploading image: {e}")
         abort(500, "Internal server error.")
 
-
+def is_valid_path(path):
+    return not re.search(r'(\.\.|/\.|\\\.|\.\./|\\\.)', path)
 
 # 포트 설정
 port = int(os.getenv('PORT', 5000))
